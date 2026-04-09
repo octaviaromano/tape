@@ -1,65 +1,295 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useRef, useEffect } from 'react';
+
+interface Track {
+  id: number;
+  title: string;
+  artist: string;
+  artUrl: string;
+  previewUrl: string | null;
+  duration: number;
+  externalUrl: string;
+}
+
+const TRACK_SEEDS = [
+  { title: 'A Plea', artist: 'Flea', album: '', itunesId: '1852302991' },
+  { title: 'Halo Lunar', artist: 'Luis Alberto Spinetta', album: '', itunesId: '' },
+  { title: 'Water No Get Enemy', artist: 'Fela Kuti', album: '', itunesId: '' },
+  { title: 'Diosa', artist: 'Kali Uchis', album: '', itunesId: '' },
+  { title: 'Know', artist: 'Nick Drake', album: '', itunesId: '' },
+];
+
+function formatTime(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export default function TapePage() {
+  const [view, setView] = useState<'list' | 'gallery'>('list');
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [playingId, setPlayingId] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Record<number, number>>({});
+  const [currentTime, setCurrentTime] = useState<Record<number, number>>({});
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    async function fetchTracks() {
+      const results = await Promise.all(
+        TRACK_SEEDS.map(async (seed, i) => {
+          try {
+            const url = seed.itunesId
+              ? `https://itunes.apple.com/lookup?id=${seed.itunesId}`
+              : `https://itunes.apple.com/search?term=${encodeURIComponent([seed.title, seed.artist, seed.album].filter(Boolean).join(' '))}&entity=song&limit=1`;
+            const res = await fetch(url);
+            const data = await res.json();
+            const result = data.results?.[0];
+            return {
+              id: i + 1,
+              title: seed.title,
+              artist: seed.artist,
+              artUrl: result?.artworkUrl100?.replace('100x100bb', '400x400bb') ?? '',
+              previewUrl: result?.previewUrl ?? null,
+              duration: result?.trackTimeMillis ? Math.floor(result.trackTimeMillis / 1000) : 372,
+              externalUrl: result?.trackViewUrl ?? '#',
+            };
+          } catch {
+            return {
+              id: i + 1,
+              title: seed.title,
+              artist: seed.artist,
+              artUrl: '',
+              previewUrl: null,
+              duration: 372,
+              externalUrl: '#',
+            };
+          }
+        })
+      );
+      setTracks(results);
+      setLoading(false);
+    }
+    fetchTracks();
+  }, []);
+
+  function handlePlay(track: Track) {
+    if (playingId === track.id) {
+      audioRef.current?.pause();
+      setPlayingId(null);
+      return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.ontimeupdate = null;
+      audioRef.current.onended = null;
+    }
+
+    if (!track.previewUrl) return;
+
+    const audio = new Audio(track.previewUrl);
+    audioRef.current = audio;
+    audio.play();
+    setPlayingId(track.id);
+
+    audio.ontimeupdate = () => {
+      setProgress(p => ({ ...p, [track.id]: audio.currentTime / audio.duration }));
+      setCurrentTime(t => ({ ...t, [track.id]: audio.currentTime }));
+    };
+    audio.onended = () => {
+      setPlayingId(null);
+      setProgress(p => ({ ...p, [track.id]: 0 }));
+      setCurrentTime(t => ({ ...t, [track.id]: 0 }));
+    };
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div style={{ maxWidth: 430, margin: '0 auto', padding: '48px 24px 80px', minHeight: '100vh' }}>
+
+      {/* Logo */}
+      <p style={{ fontSize: 13, color: '#ABABAB', marginBottom: 48 }}>Tape</p>
+
+      {/* Tape title */}
+      <h1 style={{
+        fontFamily: 'Palatino, "Palatino Linotype", "Book Antiqua", serif',
+        fontSize: 32,
+        fontWeight: 400,
+        lineHeight: 1.15,
+        marginBottom: 8,
+      }}>
+        Sunday Morning Drive
+      </h1>
+      <p style={{ fontSize: 13, color: '#ABABAB', marginBottom: 36 }}>
+        Shared with close friends · January 2026
+      </p>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 20, marginBottom: 32, borderBottom: '1px solid #E2DED8' }}>
+        {(['list', 'gallery'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setView(tab)}
+            style={{
+              background: 'none',
+              border: 'none',
+              borderBottom: view === tab ? '1.5px solid #1a1a1a' : '1.5px solid transparent',
+              marginBottom: -1,
+              padding: '6px 0',
+              fontSize: 14,
+              cursor: 'pointer',
+              color: view === tab ? '#1a1a1a' : '#ABABAB',
+              fontFamily: 'inherit',
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div style={{ color: '#ABABAB', fontSize: 13, textAlign: 'center', paddingTop: 48 }}>
+          Loading tracks...
         </div>
-      </main>
+      )}
+
+      {/* List View */}
+      {!loading && view === 'list' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+          {tracks.map(track => (
+            <div key={track.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 3 }}>{track.title}</p>
+                  <p style={{ fontSize: 13, color: '#ABABAB' }}>{track.artist}</p>
+                </div>
+                <a
+                  href={track.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#ABABAB', fontSize: 15, textDecoration: 'none', paddingTop: 2 }}
+                >
+                  ↗
+                </a>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {/* Album art */}
+                {track.artUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={track.artUrl}
+                    alt={`${track.title} by ${track.artist}`}
+                    style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }}
+                  />
+                ) : (
+                  <div style={{ width: 88, height: 88, backgroundColor: '#E2DED8', borderRadius: 3, flexShrink: 0 }} />
+                )}
+
+                {/* Player */}
+                <div style={{ flex: 1 }}>
+                  <button
+                    onClick={() => handlePlay(track)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: track.previewUrl ? 'pointer' : 'default',
+                      fontSize: 18,
+                      padding: 0,
+                      marginBottom: 14,
+                      color: '#1a1a1a',
+                      opacity: track.previewUrl ? 1 : 0.3,
+                    }}
+                    aria-label={playingId === track.id ? 'Pause' : 'Play'}
+                  >
+                    {playingId === track.id ? '⏸' : '▶'}
+                  </button>
+
+                  {/* Progress bar */}
+                  <div style={{ position: 'relative', height: 1, backgroundColor: '#E2DED8', marginBottom: 6 }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: 0, left: 0,
+                      height: '100%',
+                      backgroundColor: '#1a1a1a',
+                      width: `${(progress[track.id] ?? 0) * 100}%`,
+                      transition: 'width 0.25s linear',
+                    }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: '#ABABAB' }}>
+                      {formatTime(currentTime[track.id] ?? 0)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#ABABAB' }}>
+                      {formatTime(track.duration)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Gallery View */}
+      {!loading && view === 'gallery' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px 16px' }}>
+          {tracks.map(track => (
+            <div key={track.id}>
+              <div
+                style={{ position: 'relative', cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredId(track.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={() => handlePlay(track)}
+              >
+                {track.artUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={track.artUrl}
+                    alt={`${track.title} by ${track.artist}`}
+                    style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 3, display: 'block' }}
+                  />
+                ) : (
+                  <div style={{ width: '100%', aspectRatio: '1 / 1', backgroundColor: '#E2DED8', borderRadius: 3 }} />
+                )}
+                {/* Hover overlay */}
+                {(hoveredId === track.id || playingId === track.id) && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    borderRadius: 3,
+                    backgroundColor: 'rgba(0,0,0,0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: 28, color: '#fff' }}>
+                      {playingId === track.id ? '⏸' : '▶'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{track.title}</p>
+                  <p style={{ fontSize: 12, color: '#ABABAB' }}>{track.artist}</p>
+                </div>
+                <a
+                  href={track.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#ABABAB', fontSize: 13, textDecoration: 'none', paddingTop: 1 }}
+                >
+                  ↗
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
